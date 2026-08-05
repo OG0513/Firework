@@ -7,7 +7,7 @@
    1. CONFIGURATION SYSTEM
    ================================================== */
 const Config = {
-  scaleFactor: 0.75, // Scaled to 75% of original demo
+  scaleFactor: 0.75, // Overall firework scale set to 75%
   celebrationDuration: 14000, // Duration of firework show before final message
   initials: {
     viewBox: "0 0 600 240",
@@ -136,7 +136,7 @@ const Config = {
 };
 
 /* ==================================================
-   2. UTILITY HELPERS & MATH
+   2. UTILITIES & MATH
    ================================================== */
 const MyMath = {
   random: (min, max) => Math.random() * (max - min) + min,
@@ -167,7 +167,7 @@ const Utils = {
 };
 
 /* ==================================================
-   3. STAGE ANIMATION CANVAS WRAPPER
+   3. STAGE CANVAS LOOP WRAPPER
    ================================================== */
 class Stage {
   constructor(canvasId) {
@@ -1094,7 +1094,7 @@ function createBurst(count, particleFactory, startAngle = 0, arcLength = PI_2) {
   }
 }
 
-// 11 Shell Varieties
+// All 11 Shell Varieties
 const crysanthemumShell = (size = 2) => ({
   spreadSize: 280 + size * 90, starLife: 800 + size * 180, starDensity: 1.2,
   color: randomColor(), glitter: 'light', glitterColor: whiteOrGold(),
@@ -1356,7 +1356,7 @@ let finaleInterval = null;
 
 function launchFinaleBatch() {
   if (!isFireworksActive) return;
-  // Randomly launch 1 to 4 shells simultaneously
+  // Launch 1 to 4 shells simultaneously per batch
   const shellCount = Math.floor(Math.random() * 4) + 1;
 
   for (let i = 0; i < shellCount; i++) {
@@ -1672,4 +1672,141 @@ class SceneManager {
     // 6. Start the integrated firework engine celebration
     startFinaleCelebration();
 
-    // 7. Pl
+    // 7. Play complete celebration
+    await Utils.wait(Config.celebrationDuration);
+
+    // 8. Stop fireworks & restore audio
+    stopFinaleCelebration();
+    setAmbientAudioDucking(false);
+
+    await Utils.wait(2000);
+
+    // 9. Transition to final birthday message
+    this.revealFinalMessage();
+  }
+
+  async revealFinalMessage() {
+    if (!this.finalMessageLines) return;
+    for (let el of this.finalMessageLines) {
+      el.classList.add('visible');
+      await Utils.wait(Config.timings.finalLineRevealInterval);
+    }
+  }
+
+  async fadeOutLoadingScene() {
+    if (!this.loadingScene) return;
+    if (this.moonlitSkyScene) this.moonlitSkyScene.classList.add('active');
+    this.loadingScene.classList.add('dissolving');
+    await Utils.wait(Config.timings.fadeSceneDuration);
+    this.loadingScene.style.display = 'none';
+  }
+
+  async bringInPaperRoll() {
+    if (!this.paperContainer) return;
+    if (this.focusOverlay) this.focusOverlay.classList.add('active');
+    this.paperContainer.classList.add('arrived');
+    await Utils.wait(1000);
+  }
+
+  async unfurlPaper() {
+    if (!this.paperContainer) return;
+    this.paperContainer.classList.add('unfurled');
+    await Utils.wait(Config.timings.unfurlDuration);
+  }
+
+  async revealLetterLineByLine() {
+    if (!this.letterLines) return;
+    for (let el of this.letterLines) {
+      el.classList.add('visible');
+      await Utils.wait(Config.timings.lineRevealInterval);
+    }
+  }
+
+  async showContinueInteraction() {
+    if (this.continueContainer) this.continueContainer.classList.add('visible');
+  }
+
+  async handleContinueClick(e) {
+    if (e) e.preventDefault();
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    if (this.continueBtn) this.continueBtn.style.pointerEvents = 'none';
+    if (this.paperContainer) this.paperContainer.classList.add('rolling-up');
+    await Utils.wait(1400);
+
+    if (this.paperContainer) this.paperContainer.classList.add('ascending');
+    await Utils.wait(1400);
+
+    if (this.focusOverlay) this.focusOverlay.style.opacity = '0.14';
+    if (this.memoryLaneFoundation) this.memoryLaneFoundation.classList.add('active');
+    await Utils.wait(800);
+
+    if (this.memoryLaneScrapbook) this.memoryLaneScrapbook.classList.add('active');
+    this.isTransitioning = false;
+  }
+}
+
+/* ==================================================
+   11. TIMELINE MANAGER & INITIALIZATION
+   ================================================== */
+class TimelineManager {
+  constructor(handwritingSystem, sceneManager) {
+    this.handwriting = handwritingSystem;
+    this.sceneManager = sceneManager;
+    this.subtitleContainer = document.getElementById('subtitle-container');
+  }
+
+  async runSequence() {
+    await Utils.wait(Config.timings.initialPause);
+    await this.handwriting.animateAll();
+    await Utils.wait(Config.timings.glowDelay);
+    this.handwriting.applySoftGlow();
+
+    await Utils.wait(Config.timings.subtitleDelay);
+    if (this.subtitleContainer) this.subtitleContainer.classList.add('visible');
+
+    await Utils.wait(Config.timings.subtitleHold);
+    await this.sceneManager.fadeOutLoadingScene();
+
+    await Utils.wait(Config.timings.gardenAdmirePause);
+    await this.sceneManager.bringInPaperRoll();
+
+    await Utils.wait(Config.timings.rollPauseBeforeUnfurl);
+    await this.sceneManager.unfurlPaper();
+
+    await Utils.wait(Config.timings.pauseBeforeLetterReveal);
+    await this.sceneManager.revealLetterLineByLine();
+
+    await Utils.wait(Config.timings.pauseBeforeContinue);
+    await this.sceneManager.showContinueInteraction();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  soundManager.init();
+  initFireworksEngine();
+
+  const particleCanvas = document.getElementById('particle-canvas');
+  const grassCanvas = document.getElementById('grass-canvas');
+  const svg = document.getElementById('initials-svg');
+  const penTip = document.getElementById('pen-tip');
+
+  const particleSystem = new ParticleSystem(particleCanvas);
+  const grassSystem = new GrassSystem(grassCanvas);
+  const responsiveSystem = new ResponsiveSystem(particleCanvas, grassCanvas, particleSystem, grassSystem);
+  const handwritingSystem = new HandwritingSystem(svg, penTip, particleSystem);
+  const sceneManager = new SceneManager(particleSystem, grassSystem);
+  const timelineManager = new TimelineManager(handwritingSystem, sceneManager);
+
+  responsiveSystem.handleResize();
+  particleSystem.start();
+  grassSystem.start();
+
+  timelineManager.runSequence();
+
+  // Resume AudioContext on user interaction
+  const unlockAudio = () => { soundManager.resume(); };
+  window.addEventListener('click', unlockAudio, { once: true });
+  window.addEventListener('touchstart', unlockAudio, { once: true });
+});

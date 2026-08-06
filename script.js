@@ -7,7 +7,7 @@
    1. CONFIGURATION SYSTEM
    ================================================== */
 const Config = {
-  scaleFactor: 0.75, // Overall firework scale set to 75%
+  scaleFactor: 0.90, // Firework scale set to 90%
   celebrationDuration: 14000, // Duration of firework show before final message
   initials: {
     viewBox: "0 0 600 240",
@@ -1002,6 +1002,16 @@ const COLOR_CODES_W_INVIS = [...COLOR_CODES, INVISIBLE];
 const PI_2 = Math.PI * 2;
 const PI_HALF = Math.PI * 0.5;
 
+// Color RGB Tuples for accurate full-screen environmental lighting
+const COLOR_TUPLES = {
+  '#ff0043': { r: 255, g: 0, b: 67 },    // Red illumination
+  '#14fc56': { r: 20, g: 252, b: 86 },   // Green illumination
+  '#1e7fff': { r: 30, g: 127, b: 255 },  // Blue illumination
+  '#e60aff': { r: 230, g: 10, b: 255 },  // Purple illumination
+  '#ffbf36': { r: 255, g: 191, b: 54 },  // Golden illumination
+  '#ffffff': { r: 255, g: 255, b: 255 }  // Warm White illumination
+};
+
 function randomColorSimple() { return COLOR_CODES[Math.floor(Math.random() * COLOR_CODES.length)]; }
 function randomColor(opt) {
   let color = randomColorSimple();
@@ -1018,7 +1028,7 @@ function createParticleCollection() {
 }
 
 const Star = {
-  drawWidth: 2.5,
+  drawWidth: 3.0,
   active: createParticleCollection(),
   _pool: [],
 
@@ -1046,7 +1056,7 @@ const Star = {
 };
 
 const Spark = {
-  drawWidth: 0.75,
+  drawWidth: 0.85,
   active: createParticleCollection(),
   _pool: [],
 
@@ -1067,9 +1077,10 @@ const Spark = {
 const BurstFlash = {
   active: [],
   _pool: [],
-  add(x, y, radius) {
+  add(x, y, radius, colorTuple) {
     const inst = this._pool.pop() || {};
     inst.x = x; inst.y = y; inst.radius = radius;
+    inst.colorTuple = colorTuple || { r: 255, g: 220, b: 150 };
     this.active.push(inst);
     return inst;
   },
@@ -1094,63 +1105,63 @@ function createBurst(count, particleFactory, startAngle = 0, arcLength = PI_2) {
   }
 }
 
-// All 11 Shell Varieties
-const crysanthemumShell = (size = 2) => ({
+// 12-Inch Shell Varieties (size = 4 equivalent)
+const crysanthemumShell = (size = 4) => ({
   spreadSize: 280 + size * 90, starLife: 800 + size * 180, starDensity: 1.2,
   color: randomColor(), glitter: 'light', glitterColor: whiteOrGold(),
   pistil: Math.random() < 0.5, pistilColor: makePistilColor(COLOR.White)
 });
 
-const ghostShell = (size = 2) => {
+const ghostShell = (size = 4) => {
   const shell = crysanthemumShell(size);
   shell.starLife *= 1.4; shell.color = INVISIBLE;
   shell.secondColor = randomColor({ notColor: COLOR.White });
   return shell;
 };
 
-const strobeShell = (size = 2) => ({
+const strobeShell = (size = 4) => ({
   spreadSize: 260 + size * 80, starLife: 1000 + size * 180, starDensity: 1.1,
   color: randomColor(), glitter: 'light', glitterColor: COLOR.White, strobe: true,
   strobeColor: COLOR.White, pistil: true, pistilColor: COLOR.Gold
 });
 
-const palmShell = (size = 2) => ({
+const palmShell = (size = 4) => ({
   spreadSize: 230 + size * 70, starDensity: 0.3, starLife: 1600 + size * 180,
   color: randomColor(), glitter: 'heavy'
 });
 
-const ringShell = (size = 2) => ({
+const ringShell = (size = 4) => ({
   ring: true, spreadSize: 280 + size * 90, starLife: 900 + size * 180,
   starCount: 2.2 * PI_2 * (size + 1), color: randomColor(), pistil: true,
   pistilColor: COLOR.White, glitterColor: COLOR.Gold
 });
 
-const crossetteShell = (size = 2) => ({
+const crossetteShell = (size = 4) => ({
   spreadSize: 280 + size * 90, starLife: 700 + size * 150, starDensity: 0.8,
   color: randomColor(), crossette: true
 });
 
-const floralShell = (size = 2) => ({
+const floralShell = (size = 4) => ({
   spreadSize: 280 + size * 100, starDensity: 0.12, starLife: 500 + size * 50,
   color: randomColor(), floral: true
 });
 
-const fallingLeavesShell = (size = 2) => ({
+const fallingLeavesShell = (size = 4) => ({
   color: INVISIBLE, spreadSize: 280 + size * 100, starDensity: 0.12, starLife: 500 + size * 50,
   glitter: 'medium', glitterColor: COLOR.Gold, fallingLeaves: true
 });
 
-const willowShell = (size = 2) => ({
+const willowShell = (size = 4) => ({
   spreadSize: 280 + size * 90, starDensity: 0.6, starLife: 2600 + size * 250,
   glitter: 'willow', glitterColor: COLOR.Gold, color: INVISIBLE
 });
 
-const crackleShell = (size = 2) => ({
+const crackleShell = (size = 4) => ({
   spreadSize: 340 + size * 70, starDensity: 0.9, starLife: 550 + size * 90,
   glitter: 'light', glitterColor: COLOR.Gold, color: COLOR.Gold, crackle: true
 });
 
-const horsetailShell = (size = 2) => ({
+const horsetailShell = (size = 4) => ({
   horsetail: true, spreadSize: 230 + size * 35, starDensity: 0.9, starLife: 2200 + size * 250,
   glitter: 'medium', glitterColor: whiteOrGold(), color: randomColor()
 });
@@ -1182,7 +1193,7 @@ class Shell {
     const width = stageW; const height = stageH;
     const hpad = 60; const vpad = 40;
 
-    // Upper sky zone bounds (Upper 70-80% of sky)
+    // Upper sky zone bounds
     const minHeightPercent = 0.25; 
     const minHeight = height - height * minHeightPercent;
 
@@ -1237,7 +1248,10 @@ class Shell {
       createBurst(this.starCount, starFactory);
     }
 
-    BurstFlash.add(x, y, this.spreadSize / 4);
+    const colorHex = typeof this.color === 'string' && this.color !== INVISIBLE ? this.color : COLOR.White;
+    const tuple = COLOR_TUPLES[colorHex] || { r: 255, g: 220, b: 150 };
+    BurstFlash.add(x, y, this.spreadSize / 3.5, tuple);
+
     if (this.comet) soundManager.playSound('burst', 0.85);
   }
 }
@@ -1246,6 +1260,69 @@ let trailsStage, mainStage;
 let stageW, stageH;
 let currentFrame = 0;
 let isFireworksActive = false;
+
+/* ==================================================
+   DYNAMIC DUAL-LAYER ENVIRONMENTAL LIGHTING SYSTEM
+   ================================================== */
+const currentEnvLight = { r: 0, g: 0, b: 0, a: 0 };
+const targetEnvLight = { r: 0, g: 0, b: 0, a: 0 };
+
+function updateEnvironmentLighting(speed) {
+  let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
+
+  // 1. Calculate color energy from active star particles
+  COLOR_CODES.forEach(colorHex => {
+    const stars = Star.active[colorHex];
+    const count = stars ? stars.length : 0;
+    if (count > 0) {
+      const tuple = COLOR_TUPLES[colorHex] || { r: 255, g: 220, b: 150 };
+      totalR += tuple.r * count;
+      totalG += tuple.g * count;
+      totalB += tuple.b * count;
+      totalWeight += count;
+    }
+  });
+
+  // 2. Add energy from explosion burst flashes
+  BurstFlash.active.forEach(bf => {
+    const burstWeight = 160;
+    const tuple = bf.colorTuple || { r: 255, g: 220, b: 150 };
+    totalR += tuple.r * burstWeight;
+    totalG += tuple.g * burstWeight;
+    totalB += tuple.b * burstWeight;
+    totalWeight += burstWeight;
+  });
+
+  if (totalWeight > 0) {
+    targetEnvLight.r = totalR / totalWeight;
+    targetEnvLight.g = totalG / totalWeight;
+    targetEnvLight.b = totalB / totalWeight;
+
+    // Smooth falloff curve
+    const maxDensity = 320;
+    const rawIntensity = Math.min(1.0, totalWeight / maxDensity);
+    targetEnvLight.a = Math.pow(rawIntensity, 0.45) * 0.35;
+  } else {
+    targetEnvLight.a = 0;
+  }
+
+  // Smooth frame-by-frame interpolation
+  const lerpSpeed = 0.12 * speed;
+  currentEnvLight.r += (targetEnvLight.r - currentEnvLight.r) * lerpSpeed;
+  currentEnvLight.g += (targetEnvLight.g - currentEnvLight.g) * lerpSpeed;
+  currentEnvLight.b += (targetEnvLight.b - currentEnvLight.b) * lerpSpeed;
+  currentEnvLight.a += (targetEnvLight.a - currentEnvLight.a) * lerpSpeed;
+
+  const flashOverlay = document.getElementById('firework-flash-overlay');
+  if (flashOverlay) {
+    if (currentEnvLight.a > 0.005) {
+      flashOverlay.style.backgroundColor = `rgba(${currentEnvLight.r | 0}, ${currentEnvLight.g | 0}, ${currentEnvLight.b | 0}, ${currentEnvLight.a.toFixed(3)})`;
+      flashOverlay.style.opacity = '1';
+    } else {
+      flashOverlay.style.opacity = '0';
+    }
+  }
+}
 
 function initFireworksEngine() {
   trailsStage = new Stage('trails-canvas');
@@ -1323,10 +1400,11 @@ function renderFireworks(speed) {
 
   while (BurstFlash.active.length) {
     const bf = BurstFlash.active.pop();
+    const tuple = bf.colorTuple || { r: 255, g: 200, b: 120 };
     const grad = trailsCtx.createRadialGradient(bf.x, bf.y, 0, bf.x, bf.y, bf.radius);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
-    grad.addColorStop(0.3, 'rgba(255, 180, 50, 0.2)');
-    grad.addColorStop(1, 'rgba(255, 120, 20, 0)');
+    grad.addColorStop(0, `rgba(${tuple.r}, ${tuple.g}, ${tuple.b}, 0.85)`);
+    grad.addColorStop(0.35, `rgba(${tuple.r}, ${tuple.g}, ${tuple.b}, 0.25)`);
+    grad.addColorStop(1, `rgba(${tuple.r}, ${tuple.g}, ${tuple.b}, 0)`);
     trailsCtx.fillStyle = grad;
     trailsCtx.fillRect(bf.x - bf.radius, bf.y - bf.radius, bf.radius * 2, bf.radius * 2);
     BurstFlash.returnInstance(bf);
@@ -1350,18 +1428,22 @@ function renderFireworks(speed) {
 
   trailsCtx.setTransform(1, 0, 0, 1, 0, 0);
   mainCtx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // Update Dynamic Scene Lighting
+  updateEnvironmentLighting(speed);
 }
 
 let finaleInterval = null;
 
 function launchFinaleBatch() {
   if (!isFireworksActive) return;
-  // Launch 1 to 4 shells simultaneously per batch
+  // Launch 1 to 4 12-inch shells simultaneously per batch
   const shellCount = Math.floor(Math.random() * 4) + 1;
 
   for (let i = 0; i < shellCount; i++) {
     const shellName = MyMath.randomChoice(shellNames);
-    const size = MyMath.random(1.5, 3.0);
+    // 12-inch shells (Size 4 equivalent)
+    const size = MyMath.random(3.8, 4.2);
     const shellObj = shellTypes[shellName](size);
     const shell = new Shell(shellObj);
 

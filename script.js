@@ -7,8 +7,8 @@
    1. CONFIGURATION SYSTEM
    ================================================== */
 const Config = {
-  scaleFactor: 0.90, // Firework scale set to 90%
-  celebrationDuration: 14000, // Duration of firework show before final message
+  scaleFactor: 0.90, // Overall firework scale set to 90%
+  celebrationDuration: 14000, // Duration of active firework launches
   initials: {
     viewBox: "0 0 600 240",
     strokes: [
@@ -438,7 +438,7 @@ class ResponsiveSystem {
 }
 
 /* ==================================================
-   6. BACKGROUND PARTICLES, FIREFLIES & AMBIENT CANVAS
+   6. BACKGROUND PARTICLES, MILKY WAY & CONTINUOUS STARS
    ================================================== */
 class ParticleSystem {
   constructor(canvas) {
@@ -462,7 +462,7 @@ class ParticleSystem {
     this.isGatheringHigh = false;
 
     this.initParticles();
-    this.initStars();
+    this.initStars(); // Fixed single-instance starfield continuous across scenes
     this.initFireflies();
     this.initPollen();
   }
@@ -486,12 +486,17 @@ class ParticleSystem {
   }
 
   initStars() {
+    // Only initialize once so stars stay continuous across transitions
+    if (this.stars.length > 0) return;
+
     this.stars = [];
     for (let i = 0; i < Config.sky.starCount; i++) {
       const isSparkle = Math.random() < 0.12;
       this.stars.push({
-        x: Math.random() * this.width,
-        y: Math.random() * this.height,
+        relX: Math.random(), // Relative positions preserve field across resizes
+        relY: Math.random(),
+        x: 0,
+        y: 0,
         radius: isSparkle ? Utils.randomRange(1.8, 2.8) : Utils.randomRange(0.7, 1.6),
         baseAlpha: Utils.randomRange(0.3, 0.9),
         alpha: Utils.randomRange(0.3, 0.9),
@@ -501,6 +506,14 @@ class ParticleSystem {
         color: Config.sky.starColors[Math.floor(Math.random() * Config.sky.starColors.length)]
       });
     }
+    this.updateStarPositions();
+  }
+
+  updateStarPositions() {
+    this.stars.forEach(s => {
+      s.x = s.relX * this.width;
+      s.y = s.relY * this.height;
+    });
   }
 
   initFireflies() {
@@ -574,11 +587,37 @@ class ParticleSystem {
     this.width = width; this.height = height;
     if (fireflyCount) this.fireflyCount = fireflyCount;
     if (pollenCount) this.pollenCount = pollenCount;
-    this.initStars(); this.initFireflies(); this.initPollen();
+    this.updateStarPositions();
+    this.initFireflies();
+    this.initPollen();
   }
 
   start() { if (this.isRunning) return; this.isRunning = true; this.loop(); }
   stop() { this.isRunning = false; if (this.animFrameId) cancelAnimationFrame(this.animFrameId); }
+
+  drawMilkyWay() {
+    const ctx = this.ctx;
+    ctx.save();
+
+    // Subtle diagonal band across night sky
+    const grad = ctx.createLinearGradient(0, this.height * 0.1, this.width, this.height * 0.75);
+    grad.addColorStop(0, 'rgba(200, 220, 242, 0.0)');
+    grad.addColorStop(0.35, 'rgba(216, 200, 242, 0.038)');
+    grad.addColorStop(0.5, 'rgba(235, 240, 255, 0.065)');
+    grad.addColorStop(0.65, 'rgba(200, 220, 242, 0.038)');
+    grad.addColorStop(1, 'rgba(200, 220, 242, 0.0)');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, this.height * 0.08);
+    ctx.bezierCurveTo(this.width * 0.35, this.height * 0.15, this.width * 0.65, this.height * 0.45, this.width, this.height * 0.68);
+    ctx.lineTo(this.width, this.height * 0.88);
+    ctx.bezierCurveTo(this.width * 0.65, this.height * 0.65, this.width * 0.35, this.height * 0.35, 0, this.height * 0.28);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
 
   drawSparkleStar(x, y, radius, alpha, color) {
     this.ctx.save();
@@ -604,7 +643,10 @@ class ParticleSystem {
     this.ctx.clearRect(0, 0, this.width, this.height);
     const isReduced = Utils.prefersReducedMotion();
 
-    // 1. Stars
+    // 0. Render Procedural Milky Way Galaxy Band
+    this.drawMilkyWay();
+
+    // 1. Continuous Stars
     for (let s of this.stars) {
       if (!isReduced) {
         s.phase += s.twinkleSpeed;
@@ -1264,13 +1306,14 @@ let isFireworksActive = false;
 /* ==================================================
    DYNAMIC DUAL-LAYER ENVIRONMENTAL LIGHTING SYSTEM
    ================================================== */
-const currentEnvLight = { r: 0, g: 0, b: 0, a: 0 };
-const targetEnvLight = { r: 0, g: 0, b: 0, a: 0 };
+const currentEnvLight = { r: 0, g: 0, b: 0, a: 0, x: 0.5, y: 0.4 };
+const targetEnvLight = { r: 0, g: 0, b: 0, a: 0, x: 0.5, y: 0.4 };
 
 function updateEnvironmentLighting(speed) {
   let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
+  let weightedX = 0, weightedY = 0;
 
-  // 1. Calculate color energy from active star particles
+  // 1. Calculate color energy & centroid from active star particles
   COLOR_CODES.forEach(colorHex => {
     const stars = Star.active[colorHex];
     const count = stars ? stars.length : 0;
@@ -1283,13 +1326,15 @@ function updateEnvironmentLighting(speed) {
     }
   });
 
-  // 2. Add energy from explosion burst flashes
+  // 2. Add impact energy and burst coordinates from active explosion flashes
   BurstFlash.active.forEach(bf => {
-    const burstWeight = 160;
+    const burstWeight = 180;
     const tuple = bf.colorTuple || { r: 255, g: 220, b: 150 };
     totalR += tuple.r * burstWeight;
     totalG += tuple.g * burstWeight;
     totalB += tuple.b * burstWeight;
+    weightedX += (bf.x / stageW) * burstWeight;
+    weightedY += (bf.y / stageH) * burstWeight;
     totalWeight += burstWeight;
   });
 
@@ -1297,26 +1342,36 @@ function updateEnvironmentLighting(speed) {
     targetEnvLight.r = totalR / totalWeight;
     targetEnvLight.g = totalG / totalWeight;
     targetEnvLight.b = totalB / totalWeight;
+    targetEnvLight.x = weightedX > 0 ? (weightedX / totalWeight) : 0.5;
+    targetEnvLight.y = weightedY > 0 ? (weightedY / totalWeight) : 0.4;
 
-    // Smooth falloff curve
-    const maxDensity = 320;
+    const maxDensity = 350;
     const rawIntensity = Math.min(1.0, totalWeight / maxDensity);
-    targetEnvLight.a = Math.pow(rawIntensity, 0.45) * 0.35;
+    targetEnvLight.a = Math.pow(rawIntensity, 0.42) * 0.36;
   } else {
     targetEnvLight.a = 0;
   }
 
-  // Smooth frame-by-frame interpolation
-  const lerpSpeed = 0.12 * speed;
+  // Smooth per-frame interpolation (no abrupt flashes)
+  const lerpSpeed = 0.10 * speed;
   currentEnvLight.r += (targetEnvLight.r - currentEnvLight.r) * lerpSpeed;
   currentEnvLight.g += (targetEnvLight.g - currentEnvLight.g) * lerpSpeed;
   currentEnvLight.b += (targetEnvLight.b - currentEnvLight.b) * lerpSpeed;
   currentEnvLight.a += (targetEnvLight.a - currentEnvLight.a) * lerpSpeed;
+  currentEnvLight.x += (targetEnvLight.x - currentEnvLight.x) * lerpSpeed;
+  currentEnvLight.y += (targetEnvLight.y - currentEnvLight.y) * lerpSpeed;
 
   const flashOverlay = document.getElementById('firework-flash-overlay');
   if (flashOverlay) {
     if (currentEnvLight.a > 0.005) {
-      flashOverlay.style.backgroundColor = `rgba(${currentEnvLight.r | 0}, ${currentEnvLight.g | 0}, ${currentEnvLight.b | 0}, ${currentEnvLight.a.toFixed(3)})`;
+      const r = currentEnvLight.r | 0;
+      const g = currentEnvLight.g | 0;
+      const b = currentEnvLight.b | 0;
+      const a = currentEnvLight.a.toFixed(3);
+      const posX = (currentEnvLight.x * 100).toFixed(1);
+      const posY = (currentEnvLight.y * 100).toFixed(1);
+
+      flashOverlay.style.background = `radial-gradient(circle at ${posX}% ${posY}%, rgba(${r}, ${g}, ${b}, ${a}) 0%, rgba(${r}, ${g}, ${b}, ${(a * 0.45).toFixed(3)}) 55%, rgba(${r}, ${g}, ${b}, 0) 85%)`;
       flashOverlay.style.opacity = '1';
     } else {
       flashOverlay.style.opacity = '0';
@@ -1393,9 +1448,11 @@ function renderFireworks(speed) {
   trailsCtx.scale(dpr * scale, dpr * scale);
   mainCtx.scale(dpr * scale, dpr * scale);
 
-  trailsCtx.globalCompositeOperation = 'source-over';
-  trailsCtx.fillStyle = `rgba(0, 0, 0, ${0.175 * speed})`;
+  // Preserve background visibility! Use 'destination-out' to fade particle trails to transparency rather than accumulative black fill!
+  trailsCtx.globalCompositeOperation = 'destination-out';
+  trailsCtx.fillStyle = `rgba(0, 0, 0, ${0.12 * speed})`;
   trailsCtx.fillRect(0, 0, width, height);
+
   mainCtx.clearRect(0, 0, width, height);
 
   while (BurstFlash.active.length) {
@@ -1429,7 +1486,7 @@ function renderFireworks(speed) {
   trailsCtx.setTransform(1, 0, 0, 1, 0, 0);
   mainCtx.setTransform(1, 0, 0, 1, 0, 0);
 
-  // Update Dynamic Scene Lighting
+  // Dynamic Scene Lighting Update
   updateEnvironmentLighting(speed);
 }
 
@@ -1458,7 +1515,11 @@ function launchFinaleBatch() {
 
 function startFinaleCelebration() {
   isFireworksActive = true;
-  document.getElementById('fireworks-canvas-container').classList.add('active');
+  const container = document.getElementById('fireworks-canvas-container');
+  if (container) container.classList.add('active');
+
+  const moonlitScene = document.getElementById('moonlit-sky-scene');
+  if (moonlitScene) moonlitScene.classList.add('at-end');
 
   launchFinaleBatch();
   finaleInterval = setInterval(launchFinaleBatch, 1100);
@@ -1466,10 +1527,7 @@ function startFinaleCelebration() {
 
 function stopFinaleCelebration() {
   clearInterval(finaleInterval);
-  setTimeout(() => {
-    isFireworksActive = false;
-    document.getElementById('fireworks-canvas-container').classList.remove('active');
-  }, 2500);
+  // Cease NEW launches, but keep engine active so existing trails, sparks, and lighting decay naturally!
 }
 
 /* ==================================================
@@ -1740,30 +1798,41 @@ class SceneManager {
     // 2. Prevent any further scrolling
     this.memoryLaneScrapbook.classList.add('is-locked');
 
-    // 3. Wait approximately 1 second
+    // 3. Wait 1 second
     await Utils.wait(1000);
 
-    // 4. Gracefully fade out all memory cards
+    // 4. Gracefully fade out all memory cards while keeping Moonlit Garden visible
     if (this.scrapbookTrack) {
       this.scrapbookTrack.classList.add('fade-out');
     }
 
-    // 5. Duck ambient music
+    // 5. Duck ambient soundtrack
     setAmbientAudioDucking(true);
 
-    // 6. Start the integrated firework engine celebration
+    // 6. Start integrated firework celebration
     startFinaleCelebration();
 
-    // 7. Play complete celebration
+    // 7. Run celebration launches
     await Utils.wait(Config.celebrationDuration);
 
-    // 8. Stop fireworks & restore audio
+    // 8. Cease NEW shell launches (allow active particles, trails & smoke to decay naturally)
     stopFinaleCelebration();
+
+    // 9. Natural particle decay phase (~4.5s)
+    await Utils.wait(4500);
+
+    // 10. Restore ambient audio & smoothly fade out fireworks canvas container (~3.5s)
     setAmbientAudioDucking(false);
 
-    await Utils.wait(2000);
+    const fwContainer = document.getElementById('fireworks-canvas-container');
+    if (fwContainer) fwContainer.classList.remove('active');
 
-    // 9. Transition to final birthday message
+    await Utils.wait(3500);
+
+    // 11. Complete loop shutdown
+    isFireworksActive = false;
+
+    // 12. Calm transition to final birthday message
     this.revealFinalMessage();
   }
 
@@ -1887,7 +1956,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   timelineManager.runSequence();
 
-  // Resume AudioContext on user interaction
+  // Resume AudioContext on user gesture
   const unlockAudio = () => { soundManager.resume(); };
   window.addEventListener('click', unlockAudio, { once: true });
   window.addEventListener('touchstart', unlockAudio, { once: true });

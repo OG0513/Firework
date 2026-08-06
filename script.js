@@ -7,7 +7,7 @@
    1. CONFIGURATION SYSTEM
    ================================================== */
 const Config = {
-  scaleFactor: 0.90, // Overall firework scale set to 90%
+  scaleFactor: 0.90, // Firework scale set to 90%
   celebrationDuration: 14000, // Duration of active firework launches
   initials: {
     viewBox: "0 0 600 240",
@@ -462,7 +462,7 @@ class ParticleSystem {
     this.isGatheringHigh = false;
 
     this.initParticles();
-    this.initStars(); // Fixed single-instance starfield continuous across scenes
+    this.initStars(); // Single persistent starfield for 100% continuous transition
     this.initFireflies();
     this.initPollen();
   }
@@ -486,14 +486,13 @@ class ParticleSystem {
   }
 
   initStars() {
-    // Only initialize once so stars stay continuous across transitions
-    if (this.stars.length > 0) return;
+    if (this.stars.length > 0) return; // Retain existing star positions across scenes
 
     this.stars = [];
     for (let i = 0; i < Config.sky.starCount; i++) {
       const isSparkle = Math.random() < 0.12;
       this.stars.push({
-        relX: Math.random(), // Relative positions preserve field across resizes
+        relX: Math.random(),
         relY: Math.random(),
         x: 0,
         y: 0,
@@ -599,7 +598,7 @@ class ParticleSystem {
     const ctx = this.ctx;
     ctx.save();
 
-    // Subtle diagonal band across night sky
+    // Soft diagonal galaxy band across sky
     const grad = ctx.createLinearGradient(0, this.height * 0.1, this.width, this.height * 0.75);
     grad.addColorStop(0, 'rgba(200, 220, 242, 0.0)');
     grad.addColorStop(0.35, 'rgba(216, 200, 242, 0.038)');
@@ -1032,8 +1031,11 @@ class GrassSystem {
 }
 
 /* ==================================================
-   8. INTEGRATED CANVAS FIREWORK ENGINE
+   8. EXACT ORIGINAL FIREWORK ENGINE FROM INDEX(1).HTML
    ================================================== */
+const GRAVITY = 0.9;
+let simSpeed = 1;
+
 const COLOR = {
   Red: '#ff0043', Green: '#14fc56', Blue: '#1e7fff',
   Purple: '#e60aff', Gold: '#ffbf36', White: '#ffffff'
@@ -1044,20 +1046,32 @@ const COLOR_CODES_W_INVIS = [...COLOR_CODES, INVISIBLE];
 const PI_2 = Math.PI * 2;
 const PI_HALF = Math.PI * 0.5;
 
-// Color RGB Tuples for accurate full-screen environmental lighting
 const COLOR_TUPLES = {
-  '#ff0043': { r: 255, g: 0, b: 67 },    // Red illumination
-  '#14fc56': { r: 20, g: 252, b: 86 },   // Green illumination
-  '#1e7fff': { r: 30, g: 127, b: 255 },  // Blue illumination
-  '#e60aff': { r: 230, g: 10, b: 255 },  // Purple illumination
-  '#ffbf36': { r: 255, g: 191, b: 54 },  // Golden illumination
-  '#ffffff': { r: 255, g: 255, b: 255 }  // Warm White illumination
+  '#ff0043': { r: 255, g: 0, b: 67 },
+  '#14fc56': { r: 20, g: 252, b: 86 },
+  '#1e7fff': { r: 30, g: 127, b: 255 },
+  '#e60aff': { r: 230, g: 10, b: 255 },
+  '#ffbf36': { r: 255, g: 191, b: 54 },
+  '#ffffff': { r: 255, g: 255, b: 255 }
 };
 
 function randomColorSimple() { return COLOR_CODES[Math.floor(Math.random() * COLOR_CODES.length)]; }
-function randomColor(opt) {
+let lastColor;
+function randomColor(options) {
+  const notSame = options && options.notSame;
+  const notColor = options && options.notColor;
+  const limitWhite = options && options.limitWhite;
   let color = randomColorSimple();
-  if (opt && opt.notColor && color === opt.notColor) color = randomColorSimple();
+
+  if (limitWhite && color === COLOR.White && Math.random() < 0.6) {
+    color = randomColorSimple();
+  }
+  if (notSame) {
+    while (color === lastColor) { color = randomColorSimple(); }
+  } else if (notColor) {
+    while (color === notColor) { color = randomColorSimple(); }
+  }
+  lastColor = color;
   return color;
 }
 function whiteOrGold() { return Math.random() < 0.5 ? COLOR.Gold : COLOR.White; }
@@ -1071,11 +1085,15 @@ function createParticleCollection() {
 
 const Star = {
   drawWidth: 3.0,
+  airDrag: 0.98,
+  airDragHeavy: 0.992,
   active: createParticleCollection(),
   _pool: [],
 
+  _new() { return {}; },
+
   add(x, y, color, angle, speed, life, speedOffX, speedOffY) {
-    const inst = this._pool.pop() || {};
+    const inst = this._pool.pop() || this._new();
     inst.visible = true; inst.heavy = false;
     inst.x = x; inst.y = y; inst.prevX = x; inst.prevY = y;
     inst.color = color;
@@ -1099,11 +1117,14 @@ const Star = {
 
 const Spark = {
   drawWidth: 0.85,
+  airDrag: 0.9,
   active: createParticleCollection(),
   _pool: [],
 
+  _new() { return {}; },
+
   add(x, y, color, angle, speed, life) {
-    const inst = this._pool.pop() || {};
+    const inst = this._pool.pop() || this._new();
     inst.x = x; inst.y = y; inst.prevX = x; inst.prevY = y;
     inst.color = color;
     inst.speedX = Math.sin(angle) * speed;
@@ -1119,8 +1140,9 @@ const Spark = {
 const BurstFlash = {
   active: [],
   _pool: [],
+  _new() { return {}; },
   add(x, y, radius, colorTuple) {
-    const inst = this._pool.pop() || {};
+    const inst = this._pool.pop() || this._new();
     inst.x = x; inst.y = y; inst.radius = radius;
     inst.colorTuple = colorTuple || { r: 255, g: 220, b: 150 };
     this.active.push(inst);
@@ -1128,6 +1150,20 @@ const BurstFlash = {
   },
   returnInstance(inst) { this._pool.push(inst); }
 };
+
+function createParticleArc(start, arcLength, count, randomness, particleFactory) {
+  const angleDelta = arcLength / count;
+  const end = start + arcLength - (angleDelta * 0.5);
+  if (end > start) {
+    for (let angle = start; angle < end; angle += angleDelta) {
+      particleFactory(angle + Math.random() * angleDelta * randomness);
+    }
+  } else {
+    for (let angle = start; angle > end; angle += angleDelta) {
+      particleFactory(angle + Math.random() * angleDelta * randomness);
+    }
+  }
+}
 
 function createBurst(count, particleFactory, startAngle = 0, arcLength = PI_2) {
   const R = 0.5 * Math.sqrt(count / Math.PI);
@@ -1140,73 +1176,144 @@ function createBurst(count, particleFactory, startAngle = 0, arcLength = PI_2) {
     const partsPerArc = partsPerFullRing * (arcLength / PI_2);
     const angleInc = PI_2 / partsPerFullRing;
     const angleOffset = Math.random() * angleInc + startAngle;
+    const maxRandomAngleOffset = angleInc * 0.33;
     for (let j = 0; j < partsPerArc; j++) {
-      let angle = angleInc * j + angleOffset + Math.random() * angleInc * 0.33;
+      let angle = angleInc * j + angleOffset + Math.random() * maxRandomAngleOffset;
       particleFactory(angle, ringSize);
     }
   }
 }
 
-// 12-Inch Shell Varieties (size = 4 equivalent)
-const crysanthemumShell = (size = 4) => ({
-  spreadSize: 280 + size * 90, starLife: 800 + size * 180, starDensity: 1.2,
-  color: randomColor(), glitter: 'light', glitterColor: whiteOrGold(),
-  pistil: Math.random() < 0.5, pistilColor: makePistilColor(COLOR.White)
-});
+function crossetteEffect(star) {
+  const startAngle = Math.random() * PI_HALF;
+  createParticleArc(startAngle, PI_2, 4, 0.5, angle => {
+    Star.add(star.x, star.y, star.color, angle, Math.random() * 0.6 + 0.75, 600);
+  });
+}
+
+function floralEffect(star) {
+  createBurst(18, (angle, speedMult) => {
+    Star.add(star.x, star.y, star.color, angle, speedMult * 2.4, 1000 + Math.random() * 300, star.speedX, star.speedY);
+  });
+  BurstFlash.add(star.x, star.y, 46);
+  soundManager.playSound('burstSmall');
+}
+
+function fallingLeavesEffect(star) {
+  createBurst(7, (angle, speedMult) => {
+    const newStar = Star.add(star.x, star.y, INVISIBLE, angle, speedMult * 2.4, 2400 + Math.random() * 600, star.speedX, star.speedY);
+    newStar.sparkColor = COLOR.Gold;
+    newStar.sparkFreq = 120;
+    newStar.sparkSpeed = 0.28;
+    newStar.sparkLife = 750;
+    newStar.sparkLifeVariation = 3.2;
+  });
+  BurstFlash.add(star.x, star.y, 46);
+  soundManager.playSound('burstSmall');
+}
+
+function crackleEffect(star) {
+  createParticleArc(0, PI_2, 32, 1.8, angle => {
+    Spark.add(star.x, star.y, COLOR.Gold, angle, Math.pow(Math.random(), 0.45) * 2.4, 300 + Math.random() * 200);
+  });
+}
+
+// 12-inch shell definitions (size = 4)
+const crysanthemumShell = (size = 4) => {
+  const glitter = Math.random() < 0.25;
+  const singleColor = Math.random() < 0.72;
+  const color = singleColor ? randomColor({ limitWhite: true }) : [randomColor(), randomColor({ notSame: true })];
+  const pistil = singleColor && Math.random() < 0.42;
+  const pistilColor = pistil && makePistilColor(color);
+  const secondColor = singleColor && (Math.random() < 0.2 || color === COLOR.White) ? pistilColor || randomColor({ notColor: color, limitWhite: true }) : null;
+  const streamers = !pistil && color !== COLOR.White && Math.random() < 0.42;
+  return {
+    shellSize: size, spreadSize: 300 + size * 100, starLife: 900 + size * 200, starDensity: 1.2,
+    color, secondColor, glitter: glitter ? 'light' : '', glitterColor: whiteOrGold(),
+    pistil, pistilColor, streamers
+  };
+};
 
 const ghostShell = (size = 4) => {
   const shell = crysanthemumShell(size);
-  shell.starLife *= 1.4; shell.color = INVISIBLE;
-  shell.secondColor = randomColor({ notColor: COLOR.White });
+  shell.starLife *= 1.5;
+  let ghostColor = randomColor({ notColor: COLOR.White });
+  shell.streamers = true;
+  shell.color = INVISIBLE;
+  shell.secondColor = ghostColor;
+  shell.glitter = '';
   return shell;
 };
 
-const strobeShell = (size = 4) => ({
-  spreadSize: 260 + size * 80, starLife: 1000 + size * 180, starDensity: 1.1,
-  color: randomColor(), glitter: 'light', glitterColor: COLOR.White, strobe: true,
-  strobeColor: COLOR.White, pistil: true, pistilColor: COLOR.Gold
-});
+const strobeShell = (size = 4) => {
+  const color = randomColor({ limitWhite: true });
+  return {
+    shellSize: size, spreadSize: 280 + size * 92, starLife: 1100 + size * 200, starLifeVariation: 0.40,
+    starDensity: 1.1, color, glitter: 'light', glitterColor: COLOR.White, strobe: true,
+    strobeColor: Math.random() < 0.5 ? COLOR.White : null, pistil: Math.random() < 0.5, pistilColor: makePistilColor(color)
+  };
+};
 
-const palmShell = (size = 4) => ({
-  spreadSize: 230 + size * 70, starDensity: 0.3, starLife: 1600 + size * 180,
-  color: randomColor(), glitter: 'heavy'
-});
+const palmShell = (size = 4) => {
+  const color = randomColor();
+  const thick = Math.random() < 0.5;
+  return {
+    shellSize: size, color, spreadSize: 250 + size * 75, starDensity: thick ? 0.15 : 0.4,
+    starLife: 1800 + size * 200, glitter: thick ? 'thick' : 'heavy'
+  };
+};
 
-const ringShell = (size = 4) => ({
-  ring: true, spreadSize: 280 + size * 90, starLife: 900 + size * 180,
-  starCount: 2.2 * PI_2 * (size + 1), color: randomColor(), pistil: true,
-  pistilColor: COLOR.White, glitterColor: COLOR.Gold
-});
+const ringShell = (size = 4) => {
+  const color = randomColor();
+  const pistil = Math.random() < 0.75;
+  return {
+    shellSize: size, ring: true, color, spreadSize: 300 + size * 100, starLife: 900 + size * 200,
+    starCount: 2.2 * PI_2 * (size + 1), pistil, pistilColor: makePistilColor(color),
+    glitter: !pistil ? 'light' : '', glitterColor: color === COLOR.Gold ? COLOR.Gold : COLOR.White,
+    streamers: Math.random() < 0.3
+  };
+};
 
-const crossetteShell = (size = 4) => ({
-  spreadSize: 280 + size * 90, starLife: 700 + size * 150, starDensity: 0.8,
-  color: randomColor(), crossette: true
-});
+const crossetteShell = (size = 4) => {
+  const color = randomColor({ limitWhite: true });
+  return {
+    shellSize: size, spreadSize: 300 + size * 100, starLife: 750 + size * 160, starLifeVariation: 0.4,
+    starDensity: 0.85, color, crossette: true, pistil: Math.random() < 0.5, pistilColor: makePistilColor(color)
+  };
+};
 
 const floralShell = (size = 4) => ({
-  spreadSize: 280 + size * 100, starDensity: 0.12, starLife: 500 + size * 50,
-  color: randomColor(), floral: true
+  shellSize: size, spreadSize: 300 + size * 120, starDensity: 0.12, starLife: 500 + size * 50,
+  starLifeVariation: 0.5, color: Math.random() < 0.65 ? 'random' : (Math.random() < 0.15 ? randomColor() : [randomColor(), randomColor({ notSame: true })]), floral: true
 });
 
 const fallingLeavesShell = (size = 4) => ({
-  color: INVISIBLE, spreadSize: 280 + size * 100, starDensity: 0.12, starLife: 500 + size * 50,
-  glitter: 'medium', glitterColor: COLOR.Gold, fallingLeaves: true
+  shellSize: size, color: INVISIBLE, spreadSize: 300 + size * 120, starDensity: 0.12, starLife: 500 + size * 50,
+  starLifeVariation: 0.5, glitter: 'medium', glitterColor: COLOR.Gold, fallingLeaves: true
 });
 
 const willowShell = (size = 4) => ({
-  spreadSize: 280 + size * 90, starDensity: 0.6, starLife: 2600 + size * 250,
+  shellSize: size, spreadSize: 300 + size * 100, starDensity: 0.6, starLife: 3000 + size * 300,
   glitter: 'willow', glitterColor: COLOR.Gold, color: INVISIBLE
 });
 
-const crackleShell = (size = 4) => ({
-  spreadSize: 340 + size * 70, starDensity: 0.9, starLife: 550 + size * 90,
-  glitter: 'light', glitterColor: COLOR.Gold, color: COLOR.Gold, crackle: true
-});
+const crackleShell = (size = 4) => {
+  const color = Math.random() < 0.75 ? COLOR.Gold : randomColor();
+  return {
+    shellSize: size, spreadSize: 380 + size * 75, starDensity: 1, starLife: 600 + size * 100,
+    starLifeVariation: 0.32, glitter: 'light', glitterColor: COLOR.Gold, color, crackle: true,
+    pistil: Math.random() < 0.65, pistilColor: makePistilColor(color)
+  };
+};
 
-const horsetailShell = (size = 4) => ({
-  horsetail: true, spreadSize: 230 + size * 35, starDensity: 0.9, starLife: 2200 + size * 250,
-  glitter: 'medium', glitterColor: whiteOrGold(), color: randomColor()
-});
+const horsetailShell = (size = 4) => {
+  const color = randomColor();
+  return {
+    shellSize: size, horsetail: true, color, spreadSize: 250 + size * 38, starDensity: 0.9,
+    starLife: 2500 + size * 300, glitter: 'medium', glitterColor: Math.random() < 0.5 ? whiteOrGold() : color,
+    strobe: color === COLOR.White
+  };
+};
 
 const shellTypes = {
   'Crackle': crackleShell, 'Crossette': crossetteShell, 'Crysanthemum': crysanthemumShell,
@@ -1231,15 +1338,13 @@ class Shell {
     }
   }
 
-  launch(positionX, launchHeight) {
+  launch(position, launchHeight) {
     const width = stageW; const height = stageH;
-    const hpad = 60; const vpad = 40;
-
-    // Upper sky zone bounds
-    const minHeightPercent = 0.25; 
+    const hpad = 60; const vpad = 50;
+    const minHeightPercent = 0.45;
     const minHeight = height - height * minHeightPercent;
 
-    const launchX = positionX * (width - hpad * 2) + hpad;
+    const launchX = position * (width - hpad * 2) + hpad;
     const launchY = height;
     const burstY = minHeight - (launchHeight * (minHeight - vpad));
 
@@ -1255,8 +1360,13 @@ class Shell {
 
     comet.heavy = true;
     comet.spinRadius = MyMath.random(0.32, 0.85);
-    comet.sparkFreq = 12; comet.sparkLife = 320;
+    comet.sparkFreq = 12; comet.sparkLife = 320; comet.sparkLifeVariation = 3;
     if (this.color === INVISIBLE) comet.sparkColor = COLOR.Gold;
+
+    if (Math.random() > 0.4 && !this.horsetail) {
+      comet.secondColor = INVISIBLE;
+      comet.transitionTime = Math.pow(Math.random(), 1.5) * 700 + 500;
+    }
 
     comet.onDeath = c => this.burst(c.x, c.y);
     soundManager.playSound('lift');
@@ -1264,37 +1374,110 @@ class Shell {
 
   burst(x, y) {
     const speed = this.spreadSize / 96;
-    let color, sparkFreq = 200, sparkSpeed = 0.4, sparkLife = 600;
+    let color, onDeath, sparkFreq, sparkSpeed, sparkLife;
+    let sparkLifeVariation = 0.25;
+    let playedDeathSound = false;
+
+    if (this.crossette) onDeath = star => {
+      if (!playedDeathSound) { soundManager.playSound('crackleSmall'); playedDeathSound = true; }
+      crossetteEffect(star);
+    };
+    if (this.crackle) onDeath = star => {
+      if (!playedDeathSound) { soundManager.playSound('crackle'); playedDeathSound = true; }
+      crackleEffect(star);
+    };
+    if (this.floral) onDeath = floralEffect;
+    if (this.fallingLeaves) onDeath = fallingLeavesEffect;
+
+    if (this.glitter === 'light') { sparkFreq = 400; sparkSpeed = 0.3; sparkLife = 300; sparkLifeVariation = 2; }
+    else if (this.glitter === 'medium') { sparkFreq = 200; sparkSpeed = 0.44; sparkLife = 700; sparkLifeVariation = 2; }
+    else if (this.glitter === 'heavy') { sparkFreq = 80; sparkSpeed = 0.8; sparkLife = 1400; sparkLifeVariation = 2; }
+    else if (this.glitter === 'thick') { sparkFreq = 16; sparkSpeed = 1.5; sparkLife = 1400; sparkLifeVariation = 3; }
+    else if (this.glitter === 'streamer') { sparkFreq = 32; sparkSpeed = 1.05; sparkLife = 620; sparkLifeVariation = 2; }
+    else if (this.glitter === 'willow') { sparkFreq = 120; sparkSpeed = 0.34; sparkLife = 1400; sparkLifeVariation = 3.8; }
 
     const starFactory = (angle, speedMult) => {
+      const standardInitialSpeed = this.spreadSize / 1800;
       const star = Star.add(
         x, y, color || randomColor(), angle, speedMult * speed,
         this.starLife + Math.random() * this.starLife * this.starLifeVariation,
-        0, -this.spreadSize / 1800
+        this.horsetail ? this.comet && this.comet.speedX : 0,
+        this.horsetail ? this.comet && this.comet.speedY : -standardInitialSpeed
       );
 
       if (this.secondColor) {
-        star.transitionTime = this.starLife * 0.35;
+        star.transitionTime = this.starLife * (Math.random() * 0.05 + 0.32);
         star.secondColor = this.secondColor;
       }
+      if (this.strobe) {
+        star.transitionTime = this.starLife * (Math.random() * 0.08 + 0.46);
+        star.strobe = true;
+        star.strobeFreq = Math.random() * 20 + 40;
+        if (this.strobeColor) star.secondColor = this.strobeColor;
+      }
+      star.onDeath = onDeath;
       if (this.glitter) {
-        star.sparkFreq = sparkFreq;
-        star.sparkSpeed = sparkSpeed;
-        star.sparkLife = sparkLife;
-        star.sparkColor = this.glitterColor;
+        star.sparkFreq = sparkFreq; star.sparkSpeed = sparkSpeed;
+        star.sparkLife = sparkLife; star.sparkLifeVariation = sparkLifeVariation;
+        star.sparkColor = this.glitterColor; star.sparkTimer = Math.random() * star.sparkFreq;
       }
     };
 
     if (typeof this.color === 'string') {
-      color = this.color === INVISIBLE ? null : this.color;
-      createBurst(this.starCount, starFactory);
+      color = this.color === 'random' ? null : this.color;
+      if (this.ring) {
+        const ringStartAngle = Math.random() * Math.PI;
+        const ringSquash = Math.pow(Math.random(), 2) * 0.85 + 0.15;
+        createParticleArc(0, PI_2, this.starCount, 0, angle => {
+          const initSpeedX = Math.sin(angle) * speed * ringSquash;
+          const initSpeedY = Math.cos(angle) * speed;
+          const newSpeed = MyMath.pointDist(0, 0, initSpeedX, initSpeedY);
+          const newAngle = MyMath.pointAngle(0, 0, initSpeedX, initSpeedY) + ringStartAngle;
+          const star = Star.add(x, y, color, newAngle, newSpeed, this.starLife + Math.random() * this.starLife * this.starLifeVariation);
+          if (this.glitter) {
+            star.sparkFreq = sparkFreq; star.sparkSpeed = sparkSpeed;
+            star.sparkLife = sparkLife; star.sparkLifeVariation = sparkLifeVariation;
+            star.sparkColor = this.glitterColor; star.sparkTimer = Math.random() * star.sparkFreq;
+          }
+        });
+      } else {
+        createBurst(this.starCount, starFactory);
+      }
+    } else if (Array.isArray(this.color)) {
+      if (Math.random() < 0.5) {
+        const start = Math.random() * Math.PI; const start2 = start + Math.PI; const arc = Math.PI;
+        color = this.color[0]; createBurst(this.starCount, starFactory, start, arc);
+        color = this.color[1]; createBurst(this.starCount, starFactory, start2, arc);
+      } else {
+        color = this.color[0]; createBurst(this.starCount / 2, starFactory);
+        color = this.color[1]; createBurst(this.starCount / 2, starFactory);
+      }
+    }
+
+    if (this.pistil) {
+      const innerShell = new Shell({
+        spreadSize: this.spreadSize * 0.5, starLife: this.starLife * 0.6,
+        starLifeVariation: this.starLifeVariation, starDensity: 1.4,
+        color: this.pistilColor, glitter: 'light', glitterColor: this.pistilColor === COLOR.Gold ? COLOR.Gold : COLOR.White
+      });
+      innerShell.burst(x, y);
+    }
+    if (this.streamers) {
+      const innerShell = new Shell({
+        spreadSize: this.spreadSize * 0.9, starLife: this.starLife * 0.8,
+        starLifeVariation: this.starLifeVariation, starCount: Math.floor(Math.max(6, this.spreadSize / 45)),
+        color: COLOR.White, glitter: 'streamer'
+      });
+      innerShell.burst(x, y);
     }
 
     const colorHex = typeof this.color === 'string' && this.color !== INVISIBLE ? this.color : COLOR.White;
     const tuple = COLOR_TUPLES[colorHex] || { r: 255, g: 220, b: 150 };
     BurstFlash.add(x, y, this.spreadSize / 3.5, tuple);
 
-    if (this.comet) soundManager.playSound('burst', 0.85);
+    if (this.comet) {
+      soundManager.playSound('burst', 0.85);
+    }
   }
 }
 
@@ -1304,7 +1487,7 @@ let currentFrame = 0;
 let isFireworksActive = false;
 
 /* ==================================================
-   DYNAMIC DUAL-LAYER ENVIRONMENTAL LIGHTING SYSTEM
+   DYNAMIC ENVIRONMENTAL LIGHTING SYSTEM
    ================================================== */
 const currentEnvLight = { r: 0, g: 0, b: 0, a: 0, x: 0.5, y: 0.4 };
 const targetEnvLight = { r: 0, g: 0, b: 0, a: 0, x: 0.5, y: 0.4 };
@@ -1313,7 +1496,6 @@ function updateEnvironmentLighting(speed) {
   let totalR = 0, totalG = 0, totalB = 0, totalWeight = 0;
   let weightedX = 0, weightedY = 0;
 
-  // 1. Calculate color energy & centroid from active star particles
   COLOR_CODES.forEach(colorHex => {
     const stars = Star.active[colorHex];
     const count = stars ? stars.length : 0;
@@ -1326,7 +1508,6 @@ function updateEnvironmentLighting(speed) {
     }
   });
 
-  // 2. Add impact energy and burst coordinates from active explosion flashes
   BurstFlash.active.forEach(bf => {
     const burstWeight = 180;
     const tuple = bf.colorTuple || { r: 255, g: 220, b: 150 };
@@ -1352,7 +1533,6 @@ function updateEnvironmentLighting(speed) {
     targetEnvLight.a = 0;
   }
 
-  // Smooth per-frame interpolation (no abrupt flashes)
   const lerpSpeed = 0.10 * speed;
   currentEnvLight.r += (targetEnvLight.r - currentEnvLight.r) * lerpSpeed;
   currentEnvLight.g += (targetEnvLight.g - currentEnvLight.g) * lerpSpeed;
@@ -1402,9 +1582,13 @@ function initFireworksEngine() {
     if (!isFireworksActive) return;
 
     currentFrame++;
-    const timeStep = frameTime;
-    const speed = lag;
-    const gAcc = (timeStep / 1000) * 0.9;
+    const timeStep = frameTime * simSpeed;
+    const speed = simSpeed * lag;
+
+    const starDrag = 1 - (1 - Star.airDrag) * speed;
+    const starDragHeavy = 1 - (1 - Star.airDragHeavy) * speed;
+    const sparkDrag = 1 - (1 - Spark.airDrag) * speed;
+    const gAcc = (timeStep / 1000) * GRAVITY;
 
     COLOR_CODES_W_INVIS.forEach(color => {
       const stars = Star.active[color];
@@ -1418,18 +1602,57 @@ function initFireworksEngine() {
           stars.splice(i, 1);
           Star.returnInstance(star);
         } else {
+          const burnRate = Math.pow(star.life / star.fullLife, 0.5);
+          const burnRateInverse = 1 - burnRate;
+
           star.prevX = star.x; star.prevY = star.y;
           star.x += star.speedX * speed; star.y += star.speedY * speed;
-          star.speedX *= star.heavy ? 0.992 : 0.98;
-          star.speedY *= star.heavy ? 0.992 : 0.98;
+
+          if (!star.heavy) { star.speedX *= starDrag; star.speedY *= starDrag; }
+          else { star.speedX *= starDragHeavy; star.speedY *= starDragHeavy; }
           star.speedY += gAcc;
 
-          if (star.secondColor && star.life < star.transitionTime && !star.colorChanged) {
-            star.colorChanged = true;
-            star.color = star.secondColor;
-            stars.splice(i, 1);
-            Star.active[star.secondColor].push(star);
+          if (star.spinRadius) {
+            star.spinAngle += star.spinSpeed * speed;
+            star.x += Math.sin(star.spinAngle) * star.spinRadius * speed;
+            star.y += Math.cos(star.spinAngle) * star.spinRadius * speed;
           }
+
+          if (star.sparkFreq) {
+            star.sparkTimer -= timeStep;
+            while (star.sparkTimer < 0) {
+              star.sparkTimer += star.sparkFreq * 0.75 + star.sparkFreq * burnRateInverse * 4;
+              Spark.add(star.x, star.y, star.sparkColor, Math.random() * PI_2, Math.random() * star.sparkSpeed * burnRate, star.sparkLife * 0.8 + Math.random() * star.sparkLifeVariation * star.sparkLife);
+            }
+          }
+
+          if (star.life < star.transitionTime) {
+            if (star.secondColor && !star.colorChanged) {
+              star.colorChanged = true;
+              star.color = star.secondColor;
+              stars.splice(i, 1);
+              Star.active[star.secondColor].push(star);
+              if (star.secondColor === INVISIBLE) star.sparkFreq = 0;
+            }
+            if (star.strobe) {
+              star.visible = Math.floor(star.life / star.strobeFreq) % 3 === 0;
+            }
+          }
+        }
+      }
+
+      const sparks = Spark.active[color];
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const spark = sparks[i];
+        spark.life -= timeStep;
+        if (spark.life <= 0) {
+          sparks.splice(i, 1);
+          Spark.returnInstance(spark);
+        } else {
+          spark.prevX = spark.x; spark.prevY = spark.y;
+          spark.x += spark.speedX * speed; spark.y += spark.speedY * speed;
+          spark.speedX *= sparkDrag; spark.speedY *= sparkDrag;
+          spark.speedY += gAcc;
         }
       }
     });
@@ -1448,7 +1671,7 @@ function renderFireworks(speed) {
   trailsCtx.scale(dpr * scale, dpr * scale);
   mainCtx.scale(dpr * scale, dpr * scale);
 
-  // Preserve background visibility! Use 'destination-out' to fade particle trails to transparency rather than accumulative black fill!
+  // PRESERVE GARDEN VISIBILITY: Use 'destination-out' to fade particle trails to transparent instead of dark fill!
   trailsCtx.globalCompositeOperation = 'destination-out';
   trailsCtx.fillStyle = `rgba(0, 0, 0, ${0.12 * speed})`;
   trailsCtx.fillRect(0, 0, width, height);
@@ -1483,10 +1706,21 @@ function renderFireworks(speed) {
     trailsCtx.stroke();
   });
 
+  COLOR_CODES.forEach(color => {
+    const sparks = Spark.active[color];
+    trailsCtx.strokeStyle = color;
+    trailsCtx.beginPath();
+    sparks.forEach(spark => {
+      trailsCtx.moveTo(spark.x, spark.y);
+      trailsCtx.lineTo(spark.prevX, spark.prevY);
+    });
+    trailsCtx.stroke();
+  });
+
   trailsCtx.setTransform(1, 0, 0, 1, 0, 0);
   mainCtx.setTransform(1, 0, 0, 1, 0, 0);
 
-  // Dynamic Scene Lighting Update
+  // Update Dynamic Scene Lighting
   updateEnvironmentLighting(speed);
 }
 
@@ -1499,8 +1733,7 @@ function launchFinaleBatch() {
 
   for (let i = 0; i < shellCount; i++) {
     const shellName = MyMath.randomChoice(shellNames);
-    // 12-inch shells (Size 4 equivalent)
-    const size = MyMath.random(3.8, 4.2);
+    const size = 4; // 12-inch shells
     const shellObj = shellTypes[shellName](size);
     const shell = new Shell(shellObj);
 
@@ -1527,7 +1760,6 @@ function startFinaleCelebration() {
 
 function stopFinaleCelebration() {
   clearInterval(finaleInterval);
-  // Cease NEW launches, but keep engine active so existing trails, sparks, and lighting decay naturally!
 }
 
 /* ==================================================
@@ -1815,10 +2047,10 @@ class SceneManager {
     // 7. Run celebration launches
     await Utils.wait(Config.celebrationDuration);
 
-    // 8. Cease NEW shell launches (allow active particles, trails & smoke to decay naturally)
+    // 8. Cease NEW shell launches
     stopFinaleCelebration();
 
-    // 9. Natural particle decay phase (~4.5s)
+    // 9. Allow remaining particles, comets, trails & smoke to decay naturally (~4.5s)
     await Utils.wait(4500);
 
     // 10. Restore ambient audio & smoothly fade out fireworks canvas container (~3.5s)
@@ -1829,10 +2061,10 @@ class SceneManager {
 
     await Utils.wait(3500);
 
-    // 11. Complete loop shutdown
+    // 11. Shutdown active state
     isFireworksActive = false;
 
-    // 12. Calm transition to final birthday message
+    // 12. Calm, elegant transition to final birthday message
     this.revealFinalMessage();
   }
 

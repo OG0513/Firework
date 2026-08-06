@@ -232,7 +232,7 @@ html, body {
 }
 
 .moonlit-sky-scene.at-end .sky-backdrop {
-  filter: brightness(0.92);
+  filter: brightness(0.88); /* Subtle dimming that keeps Moonlit Garden completely visible */
 }
 
 .fireworks-canvas-container {
@@ -244,7 +244,7 @@ html, body {
   pointer-events: none;
   z-index: 3;
   opacity: 0;
-  transition: opacity 3.5s var(--ease-cinematic); /* Smooth, long cinematic fade-out */
+  transition: opacity 3.5s var(--ease-cinematic); /* Long, smooth cinematic fade-out */
 }
 
 .fireworks-canvas-container.active { opacity: 1; }

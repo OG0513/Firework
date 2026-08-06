@@ -462,7 +462,7 @@ class ParticleSystem {
     this.isGatheringHigh = false;
 
     this.initParticles();
-    this.initStars(); // Single persistent starfield for 100% continuous transition
+    this.initStars(); // Persistent starfield
     this.initFireflies();
     this.initPollen();
   }
@@ -486,7 +486,7 @@ class ParticleSystem {
   }
 
   initStars() {
-    if (this.stars.length > 0) return; // Retain existing star positions across scenes
+    if (this.stars.length > 0) return;
 
     this.stars = [];
     for (let i = 0; i < Config.sky.starCount; i++) {
@@ -598,7 +598,6 @@ class ParticleSystem {
     const ctx = this.ctx;
     ctx.save();
 
-    // Soft diagonal galaxy band across sky
     const grad = ctx.createLinearGradient(0, this.height * 0.1, this.width, this.height * 0.75);
     grad.addColorStop(0, 'rgba(200, 220, 242, 0.0)');
     grad.addColorStop(0.35, 'rgba(216, 200, 242, 0.038)');
@@ -642,10 +641,8 @@ class ParticleSystem {
     this.ctx.clearRect(0, 0, this.width, this.height);
     const isReduced = Utils.prefersReducedMotion();
 
-    // 0. Render Procedural Milky Way Galaxy Band
     this.drawMilkyWay();
 
-    // 1. Continuous Stars
     for (let s of this.stars) {
       if (!isReduced) {
         s.phase += s.twinkleSpeed;
@@ -663,7 +660,6 @@ class ParticleSystem {
       }
     }
 
-    // 2. Pollen
     for (let pol of this.pollen) {
       if (!isReduced) {
         pol.x += pol.vx; pol.y += pol.vy; pol.phase += pol.pulseSpeed;
@@ -681,7 +677,6 @@ class ParticleSystem {
       this.ctx.restore();
     }
 
-    // 3. Ambient Particles
     for (let p of this.particles) {
       if (!isReduced) {
         p.x += p.vx; p.y += p.vy; p.phase += p.pulseSpeed;
@@ -703,7 +698,6 @@ class ParticleSystem {
       this.ctx.restore();
     }
 
-    // 4. Fireflies
     for (let ff of this.fireflies) {
       if (!isReduced) {
         ff.phase += ff.pulseSpeed;
@@ -738,7 +732,6 @@ class ParticleSystem {
       this.ctx.restore();
     }
 
-    // 5. Stardust Sparks
     for (let i = this.stardustSparks.length - 1; i >= 0; i--) {
       const sp = this.stardustSparks[i];
       sp.x += sp.vx; sp.y += sp.vy; sp.alpha -= sp.decay;
@@ -753,7 +746,6 @@ class ParticleSystem {
       this.ctx.restore();
     }
 
-    // 6. Shooting Stars
     if (!isReduced && now - this.lastShootingStarTime > 8500) {
       this.triggerShootingStar();
       this.lastShootingStarTime = now + Utils.randomRange(-2000, 3000);
